@@ -141,6 +141,10 @@ func (d *Dialect) AppendSequence(b []byte, _ *schema.Table, _ *schema.Field) []b
 	return append(b, " IDENTITY"...)
 }
 
+func (d *Dialect) AppendJSON(b, jsonb []byte) []byte {
+	return d.AppendString(b, string(jsonb))
+}
+
 func sqlType(field *schema.Field) string {
 	switch field.DiscoveredSQLType {
 	case sqltype.Timestamp:
