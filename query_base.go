@@ -6,6 +6,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/uptrace/bun/dialect"
@@ -728,6 +729,15 @@ type whereBaseQuery struct {
 
 func (q *whereBaseQuery) addWhere(where schema.QueryWithSep) {
 	q.where = append(q.where, where)
+}
+
+func (q *whereBaseQuery) delWhere(fieldName string) {
+	for i, where := range q.where {
+		if strings.Contains(where.Query, fieldName) {
+			q.where = append(q.where[:i], q.where[i+1:]...)
+			return
+		}
+	}
 }
 
 func (q *whereBaseQuery) addWhereGroup(sep string, where []schema.QueryWithSep) {

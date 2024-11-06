@@ -139,6 +139,11 @@ func (q *SelectQuery) WherePK(cols ...string) *SelectQuery {
 	return q
 }
 
+func (q *SelectQuery) DelWhere(fieldName string) *SelectQuery {
+	q.delWhere(fieldName)
+	return q
+}
+
 func (q *SelectQuery) Where(query string, args ...interface{}) *SelectQuery {
 	q.addWhere(schema.SafeQueryWithSep(query, args, " AND "))
 	return q
