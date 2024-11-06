@@ -775,6 +775,15 @@ func (q *whereBaseQuery) addWhere(where schema.QueryWithSep) {
 	q.where = append(q.where, where)
 }
 
+func (q *whereBaseQuery) delWhere(fieldName string) {
+	for i, where := range q.where {
+		if strings.Contains(where.Query, fieldName) {
+			q.where = append(q.where[:i], q.where[i+1:]...)
+			return
+		}
+	}
+}
+
 func (q *whereBaseQuery) addWhereGroup(sep string, where []schema.QueryWithSep) {
 	if len(where) == 0 {
 		return
