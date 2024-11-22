@@ -49,7 +49,9 @@ func New(opts ...DialectOption) *Dialect {
 		feature.InsertIgnore |
 		feature.InsertOnDuplicateKey |
 		feature.SelectExists |
-		feature.CompositeIn
+		feature.CompositeIn |
+		feature.UpdateOrderLimit |
+		feature.DeleteOrderLimit
 
 	for _, opt := range opts {
 		opt(d)
@@ -77,6 +79,9 @@ func (d *Dialect) Init(db *sql.DB) {
 
 	if strings.Contains(version, "MariaDB") {
 		version = semver.MajorMinor("v" + cleanupVersion(version))
+		if semver.Compare(version, "v10.0.5") >= 0 {
+			d.features |= feature.DeleteReturning
+		}
 		if semver.Compare(version, "v10.5.0") >= 0 {
 			d.features |= feature.InsertReturning
 		}
@@ -204,6 +209,10 @@ func (d *Dialect) DefaultVarcharLen() int {
 
 func (d *Dialect) AppendSequence(b []byte, _ *schema.Table, _ *schema.Field) []byte {
 	return append(b, " AUTO_INCREMENT"...)
+}
+
+func (d *Dialect) DefaultSchema() string {
+	return "mydb"
 }
 
 func sqlType(field *schema.Field) string {

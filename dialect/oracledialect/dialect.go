@@ -40,7 +40,8 @@ func New() *Dialect {
 		feature.TableNotExists |
 		feature.SelectExists |
 		feature.AutoIncrement |
-		feature.CompositeIn
+		feature.CompositeIn |
+		feature.DeleteReturning
 	return d
 }
 
@@ -88,6 +89,10 @@ func (*Dialect) AppendBytes(b, bs []byte) []byte {
 
 func (d *Dialect) DefaultVarcharLen() int {
 	return 255
+}
+
+func (d *Dialect) DefaultSchema() string {
+	return "app"
 }
 
 func (d *Dialect) AppendSequence(b []byte, table *schema.Table, field *schema.Field) []byte {
