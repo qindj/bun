@@ -542,6 +542,13 @@ func (q *SelectQuery) appendQuery(
 		return nil, err
 	}
 
+	if err := q.forEachInlineRelJoin(func(j *relationJoin) error {
+		j.applyTo(q)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+
 	b = append(b, "SELECT "...)
 
 	if len(q.distinctOn) > 0 {
@@ -735,8 +742,6 @@ func (q *SelectQuery) appendColumns(fmter schema.Formatter, b []byte) (_ []byte,
 func (q *SelectQuery) appendInlineRelColumns(
 	fmter schema.Formatter, b []byte, join *relationJoin,
 ) (_ []byte, err error) {
-	join.applyTo(q)
-
 	if join.columns != nil {
 		table := join.JoinModel.Table()
 		for i, col := range join.columns {
@@ -853,6 +858,14 @@ func (q *SelectQuery) scanResult(ctx context.Context, dest ...interface{}) (sql.
 	model, err := q.getModel(dest)
 	if err != nil {
 		return nil, err
+	}
+	if len(dest) > 0 && q.tableModel != nil && len(q.tableModel.getJoins()) > 0 {
+		for _, j := range q.tableModel.getJoins() {
+			switch j.Relation.Type {
+			case schema.HasManyRelation, schema.ManyToManyRelation:
+				return nil, fmt.Errorf("When querying has-many or many-to-many relationships, you should use Model instead of the dest parameter in Scan.")
+			}
+		}
 	}
 
 	if q.table != nil {
