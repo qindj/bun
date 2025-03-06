@@ -92,7 +92,6 @@ func TestTable(t *testing.T) {
 		type Perms struct {
 			View   bool
 			Create bool
-			Model  *Model
 		}
 
 		type Role struct {
@@ -111,11 +110,29 @@ func TestTable(t *testing.T) {
 		barView, ok := table.FieldMap["bar_view"]
 		require.True(t, ok)
 		require.Equal(t, []int{1, 0}, barView.Index)
+	})
 
-		_, ok = table.StructMap["foo_model"]
+	t.Run("unambiguous embed field", func(t *testing.T) {
+		type Perms struct {
+			View   bool
+			Create bool
+		}
+		type Role struct {
+			Perms        // should be ignore
+			Foo    Perms `bun:"embed:foo_"`
+			View   bool
+			Create bool
+		}
+
+		table := tables.Get(reflect.TypeFor[*Role]())
+
+		view, ok := table.FieldMap["view"]
 		require.True(t, ok)
-		_, ok = table.StructMap["foo_model"]
+		require.Equal(t, []int{2}, view.Index)
+
+		fooView, ok := table.FieldMap["foo_view"]
 		require.True(t, ok)
+		require.Equal(t, []int{1, 0}, fooView.Index)
 	})
 
 	t.Run("embedWithUnique", func(t *testing.T) {
@@ -151,6 +168,25 @@ func TestTable(t *testing.T) {
 		require.Equal(t, "unique_group_id", table.Unique["groupa"][0].Name)
 		require.Equal(t, 1, len(table.Unique["foo_groupa"]))
 		require.Equal(t, "foo_unique_group_id", table.Unique["foo_groupa"][0].Name)
+	})
+
+	t.Run("embedWithRelation", func(t *testing.T) {
+		type Profile struct {
+			ID     string `bun:",pk"`
+			UserID string
+		}
+		type User struct {
+			ID      string   `bun:",pk"`
+			Profile *Profile `bun:"rel:has-one,join:id=user_id"`
+		}
+		type Embeded struct {
+			User
+			Extra string `bun:"-"`
+		}
+
+		table := tables.Get(reflect.TypeFor[*Embeded]())
+		require.Contains(t, table.StructMap, "profile")
+		require.Equal(t, table.StructMap["profile"].Table.Name, "profiles")
 	})
 
 	t.Run("embed scanonly", func(t *testing.T) {
