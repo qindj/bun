@@ -84,7 +84,7 @@ func TestPostgresArrayQuote(t *testing.T) {
 
 type Hash [32]byte
 
-func (h *Hash) Scan(src interface{}) error {
+func (h *Hash) Scan(src any) error {
 	srcB, ok := src.([]byte)
 	if !ok {
 		return fmt.Errorf("can't scan %T into Hash", src)
@@ -153,7 +153,7 @@ func TestPostgresMultiTenant(t *testing.T) {
 	db = db.WithNamedArg("tenant", bun.Safe("public"))
 	_ = db.Table(reflect.TypeFor[IngredientRecipe]())
 
-	models := []interface{}{
+	models := []any{
 		(*Recipe)(nil),
 		(*Ingredient)(nil),
 		(*IngredientRecipe)(nil),
@@ -162,7 +162,7 @@ func TestPostgresMultiTenant(t *testing.T) {
 		mustResetModel(t, ctx, db, model)
 	}
 
-	models = []interface{}{
+	models = []any{
 		&Recipe{ID: 1},
 		&Ingredient{ID: 1},
 		&IngredientRecipe{
@@ -901,7 +901,7 @@ type UserID struct {
 	ID string
 }
 
-func (u UserID) AppendQuery(fmter schema.Formatter, b []byte) ([]byte, error) {
+func (u UserID) AppendQuery(gen schema.QueryGen, b []byte) ([]byte, error) {
 	v := []byte(`"` + u.ID + `"`)
 	return append(b, v...), nil
 }

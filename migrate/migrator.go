@@ -47,6 +47,20 @@ func WithTemplateData(data any) MigratorOption {
 	}
 }
 
+type MigrationHook func(ctx context.Context, db bun.IConn, migration *Migration) error
+
+func BeforeMigration(hook MigrationHook) MigratorOption {
+	return func(m *Migrator) {
+		m.beforeMigrationHook = hook
+	}
+}
+
+func AfterMigration(hook MigrationHook) MigratorOption {
+	return func(m *Migrator) {
+		m.afterMigrationHook = hook
+	}
+}
+
 type Migrator struct {
 	db         *bun.DB
 	migrations *Migrations
@@ -56,8 +70,10 @@ type Migrator struct {
 	table                string
 	locksTable           string
 	markAppliedOnSuccess bool
+	templateData         any
 
-	templateData any
+	beforeMigrationHook MigrationHook
+	afterMigrationHook  MigrationHook
 }
 
 func NewMigrator(db *bun.DB, migrations *Migrations, opts ...MigratorOption) *Migrator {
@@ -176,7 +192,7 @@ func (m *Migrator) Migrate(ctx context.Context, opts ...MigrationOption) (*Migra
 		group.Migrations = migrations[:i+1]
 
 		if !cfg.nop && migration.Up != nil {
-			if err := migration.Up(ctx, m.db, m.templateData); err != nil {
+			if err := migration.Up(ctx, m, migration); err != nil {
 				return group, err
 			}
 		}
@@ -189,6 +205,45 @@ func (m *Migrator) Migrate(ctx context.Context, opts ...MigrationOption) (*Migra
 	}
 
 	return group, nil
+}
+
+// RunMigration runs the up migration with the given ID without marking it as applied.
+// It runs the migration even if it is already marked as applied.
+func (m *Migrator) RunMigration(
+	ctx context.Context, migrationName string, opts ...MigrationOption,
+) error {
+	cfg := newMigrationConfig(opts)
+
+	if err := m.validate(); err != nil {
+		return err
+	}
+	if migrationName == "" {
+		return errors.New("migrate: migration name cannot be empty")
+	}
+
+	migrations, _, err := m.migrationsWithStatus(ctx)
+	if err != nil {
+		return err
+	}
+
+	var migration *Migration
+	for i := range migrations {
+		if migrations[i].Name == migrationName {
+			migration = &migrations[i]
+			break
+		}
+	}
+	if migration == nil {
+		return fmt.Errorf("migrate: migration with name %q not found", migrationName)
+	}
+	if migration.Up == nil {
+		return fmt.Errorf("migrate: migration %s does not have up migration", migration.Name)
+	}
+	if cfg.nop {
+		return nil
+	}
+
+	return migration.Up(ctx, m, migration)
 }
 
 func (m *Migrator) Rollback(ctx context.Context, opts ...MigrationOption) (*MigrationGroup, error) {
@@ -215,7 +270,7 @@ func (m *Migrator) Rollback(ctx context.Context, opts ...MigrationOption) (*Migr
 		}
 
 		if !cfg.nop && migration.Down != nil {
-			if err := migration.Down(ctx, m.db, m.templateData); err != nil {
+			if err := migration.Down(ctx, m, migration); err != nil {
 				return lastGroup, err
 			}
 		}
@@ -402,7 +457,7 @@ func (m *Migrator) MissingMigrations(ctx context.Context) (MigrationSlice, error
 	return applied, nil
 }
 
-// AppliedMigrations selects applied (applied) migrations in descending order.
+// AppliedMigrations returns applied (applied) migrations in descending order.
 func (m *Migrator) AppliedMigrations(ctx context.Context) (MigrationSlice, error) {
 	var ms MigrationSlice
 	if err := m.db.NewSelect().
@@ -416,13 +471,37 @@ func (m *Migrator) AppliedMigrations(ctx context.Context) (MigrationSlice, error
 }
 
 func (m *Migrator) formattedTableName(db *bun.DB) string {
-	return db.Formatter().FormatQuery(m.table)
+	return db.QueryGen().FormatQuery(m.table)
 }
 
 func (m *Migrator) validate() error {
 	if len(m.ms) == 0 {
 		return errors.New("migrate: there are no migrations")
 	}
+	return nil
+}
+
+func (m *Migrator) exec(
+	ctx context.Context, db bun.IConn, migration *Migration, queries []string,
+) error {
+	if m.beforeMigrationHook != nil {
+		if err := m.beforeMigrationHook(ctx, db, migration); err != nil {
+			return err
+		}
+	}
+
+	for _, query := range queries {
+		if _, err := db.ExecContext(ctx, query); err != nil {
+			return err
+		}
+	}
+
+	if m.afterMigrationHook != nil {
+		if err := m.afterMigrationHook(ctx, db, migration); err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 

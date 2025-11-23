@@ -15,6 +15,12 @@ import (
 	"testing"
 	"time"
 
+	_ "github.com/denisenkom/go-mssqldb"
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/google/uuid"
+	_ "github.com/jackc/pgx/v4/stdlib"
+	"github.com/stretchr/testify/require"
+
 	"github.com/uptrace/bun"
 	"github.com/uptrace/bun/dialect"
 	"github.com/uptrace/bun/dialect/feature"
@@ -28,17 +34,10 @@ import (
 	"github.com/uptrace/bun/extra/bunexp"
 	"github.com/uptrace/bun/migrate/sqlschema"
 	"github.com/uptrace/bun/schema"
-
-	_ "github.com/denisenkom/go-mssqldb"
-	_ "github.com/go-sql-driver/mysql"
-	"github.com/google/uuid"
-	_ "github.com/jackc/pgx/v4/stdlib"
-	"github.com/stretchr/testify/require"
 )
 
 var (
-	ctx        = context.TODO()
-	isRaceTest = os.Getenv("RACETEST") != ""
+	ctx = context.TODO()
 )
 
 const (
@@ -242,7 +241,7 @@ func testEachDialect(t *testing.T, f func(t *testing.T, dialectName string, dial
 	}
 }
 
-func funcName(x interface{}) string {
+func funcName(x any) string {
 	s := runtime.FuncForPC(reflect.ValueOf(x).Pointer()).Name()
 	if i := strings.LastIndexByte(s, '.'); i >= 0 {
 		return s[i+1:]
@@ -309,6 +308,7 @@ func TestDB(t *testing.T) {
 		{testNoForeignKeyForPrimaryKey},
 		{testWithPointerPrimaryKeyHasManyWithDriverValuer},
 		{testRelationJoinDataRace},
+		{testCloneDBStatsDataRace},
 	}
 
 	testEachDB(t, func(t *testing.T, dbName string, db *bun.DB) {
@@ -356,7 +356,7 @@ func testSelectCount(t *testing.T, db *bun.DB) {
 		return
 	}
 
-	values := db.NewValues(&[]map[string]interface{}{
+	values := db.NewValues(&[]map[string]any{
 		{"num": 1},
 		{"num": 2},
 		{"num": 3},
@@ -380,7 +380,7 @@ func testSelectCount(t *testing.T, db *bun.DB) {
 }
 
 func testSelectMap(t *testing.T, db *bun.DB) {
-	var m map[string]interface{}
+	var m map[string]any
 	err := db.NewSelect().
 		ColumnExpr("10 AS num").
 		Scan(ctx, &m)
@@ -400,13 +400,13 @@ func testSelectMapSlice(t *testing.T, db *bun.DB) {
 		t.Skip()
 	}
 
-	values := db.NewValues(&[]map[string]interface{}{
+	values := db.NewValues(&[]map[string]any{
 		{"column1": 1},
 		{"column1": 2},
 		{"column1": 3},
 	})
 
-	var ms []map[string]interface{}
+	var ms []map[string]any
 	err := db.NewSelect().
 		With("t", values).
 		TableExpr("t").
@@ -414,7 +414,7 @@ func testSelectMapSlice(t *testing.T, db *bun.DB) {
 	require.NoError(t, err)
 	require.Len(t, ms, 3)
 	for i, m := range ms {
-		require.Equal(t, map[string]interface{}{
+		require.Equal(t, map[string]any{
 			"column1": int64(i + 1),
 		}, m)
 	}
@@ -503,7 +503,7 @@ func testSelectStructSlice(t *testing.T, db *bun.DB) {
 		Num int `bun:"column1"`
 	}
 
-	values := db.NewValues(&[]map[string]interface{}{
+	values := db.NewValues(&[]map[string]any{
 		{"column1": 1},
 		{"column1": 2},
 		{"column1": 3},
@@ -526,7 +526,7 @@ func testSelectSingleSlice(t *testing.T, db *bun.DB) {
 		t.Skip()
 	}
 
-	values := db.NewValues(&[]map[string]interface{}{
+	values := db.NewValues(&[]map[string]any{
 		{"column1": 1},
 		{"column1": 2},
 		{"column1": 3},
@@ -546,7 +546,7 @@ func testSelectMultiSlice(t *testing.T, db *bun.DB) {
 		t.Skip()
 	}
 
-	values := db.NewValues(&[]map[string]interface{}{
+	values := db.NewValues(&[]map[string]any{
 		{"a": 1, "b": "foo"},
 		{"a": 2, "b": "bar"},
 		{"a": 3, "b": ""},
@@ -651,7 +651,7 @@ func testScanSingleRowByRow(t *testing.T, db *bun.DB) {
 		t.Skip()
 	}
 
-	values := db.NewValues(&[]map[string]interface{}{
+	values := db.NewValues(&[]map[string]any{
 		{"num": 1},
 		{"num": 2},
 		{"num": 3},
@@ -685,7 +685,7 @@ func testScanRows(t *testing.T, db *bun.DB) {
 		t.Skip()
 	}
 
-	values := db.NewValues(&[]map[string]interface{}{
+	values := db.NewValues(&[]map[string]any{
 		{"num": 1},
 		{"num": 2},
 		{"num": 3},
@@ -747,8 +747,8 @@ func testRunInTx(t *testing.T, db *bun.DB) {
 
 func testJSONSpecialChars(t *testing.T, db *bun.DB) {
 	type Model struct {
-		ID    int                    `bun:",pk,autoincrement"`
-		Attrs map[string]interface{} `bun:"type:json"`
+		ID    int            `bun:",pk,autoincrement"`
+		Attrs map[string]any `bun:"type:json"`
 	}
 
 	ctx := context.Background()
@@ -756,7 +756,7 @@ func testJSONSpecialChars(t *testing.T, db *bun.DB) {
 	mustResetModel(t, ctx, db, (*Model)(nil))
 
 	model := &Model{
-		Attrs: map[string]interface{}{
+		Attrs: map[string]any{
 			"hello": "\000world\nworld\u0000",
 		},
 	}
@@ -768,11 +768,11 @@ func testJSONSpecialChars(t *testing.T, db *bun.DB) {
 	require.NoError(t, err)
 	switch db.Dialect().Name() {
 	case dialect.MySQL:
-		require.Equal(t, map[string]interface{}{
+		require.Equal(t, map[string]any{
 			"hello": "\x00world\nworld\x00",
 		}, model.Attrs)
 	default:
-		require.Equal(t, map[string]interface{}{
+		require.Equal(t, map[string]any{
 			"hello": "\\u0000world\nworld\\u0000",
 		}, model.Attrs)
 	}
@@ -780,8 +780,8 @@ func testJSONSpecialChars(t *testing.T, db *bun.DB) {
 
 func testJSONInterface(t *testing.T, db *bun.DB) {
 	type Model struct {
-		ID    int         `bun:",pk,autoincrement"`
-		Value interface{} `bun:"type:json"`
+		ID    int `bun:",pk,autoincrement"`
+		Value any `bun:"type:json"`
 	}
 
 	ctx := context.Background()
@@ -805,7 +805,7 @@ type JSONValue struct {
 
 var _ driver.Valuer = (*JSONValue)(nil)
 
-func (v *JSONValue) Scan(src interface{}) error {
+func (v *JSONValue) Scan(src any) error {
 	switch src := src.(type) {
 	case []byte:
 		v.str = string(src)
@@ -890,7 +890,7 @@ func testFKViolation(t *testing.T, db *bun.DB) {
 		require.NoError(t, err)
 	}
 
-	for _, model := range []interface{}{(*Deck)(nil), (*User)(nil)} {
+	for _, model := range []any{(*Deck)(nil), (*User)(nil)} {
 		_, err := db.NewDropTable().Model(model).IfExists().Exec(ctx)
 		require.NoError(t, err)
 	}
@@ -941,7 +941,7 @@ func testWithForeignKeysAndRules(t *testing.T, db *bun.DB) {
 		require.NoError(t, err)
 	}
 
-	for _, model := range []interface{}{(*Deck)(nil), (*User)(nil)} {
+	for _, model := range []any{(*Deck)(nil), (*User)(nil)} {
 		_, err := db.NewDropTable().Model(model).IfExists().Exec(ctx)
 		require.NoError(t, err)
 	}
@@ -1025,7 +1025,7 @@ func testWithForeignKeys(t *testing.T, db *bun.DB) {
 		require.NoError(t, err)
 	}
 
-	for _, model := range []interface{}{(*Deck)(nil), (*User)(nil)} {
+	for _, model := range []any{(*Deck)(nil), (*User)(nil)} {
 		_, err := db.NewDropTable().Model(model).IfExists().Exec(ctx)
 		require.NoError(t, err)
 	}
@@ -1091,7 +1091,7 @@ func testWithForeignKeysHasMany(t *testing.T, db *bun.DB) {
 		require.NoError(t, err)
 	}
 
-	for _, model := range []interface{}{(*Deck)(nil), (*User)(nil)} {
+	for _, model := range []any{(*Deck)(nil), (*User)(nil)} {
 		_, err := db.NewDropTable().Model(model).IfExists().Exec(ctx)
 		require.NoError(t, err)
 	}
@@ -1145,7 +1145,7 @@ func testWithPointerForeignKeysHasMany(t *testing.T, db *bun.DB) {
 		require.NoError(t, err)
 	}
 
-	for _, model := range []interface{}{(*Deck)(nil), (*User)(nil)} {
+	for _, model := range []any{(*Deck)(nil), (*User)(nil)} {
 		_, err := db.NewDropTable().Model(model).IfExists().Exec(ctx)
 		require.NoError(t, err)
 	}
@@ -1199,7 +1199,7 @@ func testWithPointerForeignKeysHasManyWithDriverValuer(t *testing.T, db *bun.DB)
 		require.NoError(t, err)
 	}
 
-	for _, model := range []interface{}{(*Deck)(nil), (*User)(nil)} {
+	for _, model := range []any{(*Deck)(nil), (*User)(nil)} {
 		_, err := db.NewDropTable().Model(model).IfExists().Exec(ctx)
 		require.NoError(t, err)
 	}
@@ -1244,7 +1244,7 @@ func testInterfaceAny(t *testing.T, db *bun.DB) {
 	}
 
 	type Model struct {
-		Value interface{}
+		Value any
 	}
 
 	model := new(Model)
@@ -1265,7 +1265,7 @@ func testInterfaceAny(t *testing.T, db *bun.DB) {
 
 func testInterfaceJSON(t *testing.T, db *bun.DB) {
 	type Model struct {
-		Value interface{} `bun:"type:json"`
+		Value any `bun:"type:json"`
 	}
 
 	model := new(Model)
@@ -1853,7 +1853,7 @@ func testNoForeignKeyForPrimaryKey(t *testing.T, db *bun.DB) {
 
 	for _, tt := range []struct {
 		name     string
-		model    interface{}
+		model    any
 		dontWant sqlschema.ForeignKey
 	}{
 		{name: "has-one relation", model: (*struct {
@@ -1901,13 +1901,13 @@ func testNoForeignKeyForPrimaryKey(t *testing.T, db *bun.DB) {
 	}
 }
 
-func mustResetModel(tb testing.TB, ctx context.Context, db *bun.DB, models ...interface{}) {
+func mustResetModel(tb testing.TB, ctx context.Context, db *bun.DB, models ...any) {
 	err := db.ResetModel(ctx, models...)
 	require.NoError(tb, err, "must reset model")
 	mustDropTableOnCleanup(tb, ctx, db, models...)
 }
 
-func mustDropTableOnCleanup(tb testing.TB, ctx context.Context, db *bun.DB, models ...interface{}) {
+func mustDropTableOnCleanup(tb testing.TB, ctx context.Context, db *bun.DB, models ...any) {
 	tb.Cleanup(func() {
 		for _, model := range models {
 			drop := db.NewDropTable().IfExists().Cascade().Model(model)
@@ -1958,7 +1958,7 @@ type notCompareKey struct {
 	s string
 }
 
-func (x *notCompareKey) AppendQuery(_ schema.Formatter, b []byte) ([]byte, error) {
+func (x *notCompareKey) AppendQuery(_ schema.QueryGen, b []byte) ([]byte, error) {
 	b = append(b, '\'')
 	b = append(b, x.s...)
 	return append(b, '\''), nil
@@ -2051,4 +2051,16 @@ func testRelationJoinDataRace(t *testing.T, db *bun.DB) {
 	var users []RaceUser
 	_, err := db.NewSelect().Model(&users).Relation("Posts").Offset(1).ScanAndCount(ctx)
 	require.NoError(t, err)
+}
+
+func testCloneDBStatsDataRace(_ *testing.T, db *bun.DB) {
+	go func() { db.WithNamedArg("", "") }()
+	go func() {
+		var num int
+		_ = db.NewSelect().
+			ColumnExpr("t.num").
+			TableExpr("(SELECT 10 AS num) AS t").
+			Where("1 = 2").
+			Scan(ctx, &num)
+	}()
 }

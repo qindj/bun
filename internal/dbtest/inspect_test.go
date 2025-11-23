@@ -72,10 +72,6 @@ type Journalist struct {
 }
 
 func TestDatabaseInspector_Inspect(t *testing.T) {
-	if isRaceTest {
-		t.Skip("TODO: fix race test")
-	}
-
 	testEachDB(t, func(t *testing.T, dbName string, db *bun.DB) {
 		defaultSchema := db.Dialect().DefaultSchema()
 
@@ -319,7 +315,7 @@ func TestDatabaseInspector_Inspect(t *testing.T) {
 	})
 }
 
-func mustCreateTableWithFKs(tb testing.TB, ctx context.Context, db *bun.DB, models ...interface{}) {
+func mustCreateTableWithFKs(tb testing.TB, ctx context.Context, db *bun.DB, models ...any) {
 	tb.Helper()
 	for _, model := range models {
 		create := db.NewCreateTable().Model(model).WithForeignKeys()
@@ -398,8 +394,8 @@ func cmpColumns(
 		colName := wantColumn.GetName()
 		wantColumnNames[colName] = struct{}{}
 
-		errorf := func(format string, args ...interface{}) {
-			errs = append(errs, fmt.Sprintf("[%s.%s] "+format, append([]interface{}{tableName, colName}, args...)...))
+		errorf := func(format string, args ...any) {
+			errs = append(errs, fmt.Sprintf("[%s.%s] "+format, append([]any{tableName, colName}, args...)...))
 		}
 
 		wantCol := wantColumn.(*sqlschema.BaseColumn)

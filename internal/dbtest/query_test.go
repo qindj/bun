@@ -255,7 +255,7 @@ func TestQuery(t *testing.T) {
 			query: func(db *bun.DB) schema.QueryAppender {
 				return db.
 					NewInsert().
-					Model(&map[string]interface{}{
+					Model(&map[string]any{
 						"id":  42,
 						"str": "hello",
 					}).
@@ -265,7 +265,7 @@ func TestQuery(t *testing.T) {
 		{
 			id: 25,
 			query: func(db *bun.DB) schema.QueryAppender {
-				src := db.NewValues(&[]map[string]interface{}{
+				src := db.NewValues(&[]map[string]any{
 					{"id": 42, "str": "hello"},
 					{"id": 43, "str": "world"},
 				})
@@ -304,7 +304,7 @@ func TestQuery(t *testing.T) {
 			id: 29,
 			query: func(db *bun.DB) schema.QueryAppender {
 				return db.NewUpdate().
-					Model(&map[string]interface{}{"str": "hello"}).
+					Model(&map[string]any{"str": "hello"}).
 					Table("models").
 					Where("id = 42")
 			},
@@ -312,7 +312,7 @@ func TestQuery(t *testing.T) {
 		{
 			id: 30,
 			query: func(db *bun.DB) schema.QueryAppender {
-				src := db.NewValues(&[]map[string]interface{}{
+				src := db.NewValues(&[]map[string]any{
 					{"id": 42, "str": "hello"},
 					{"id": 43, "str": "world"},
 				})
@@ -341,7 +341,7 @@ func TestQuery(t *testing.T) {
 				type Model struct {
 					ID     uint64 `bun:",pk,autoincrement"`
 					Struct struct{}
-					Map    map[string]interface{}
+					Map    map[string]any
 					Slice  []string
 					Array  []string `bun:",array"`
 				}
@@ -1750,6 +1750,135 @@ func TestQuery(t *testing.T) {
 				return db.NewCreateTable().Model(new(AcronymPDF))
 			},
 		},
+		{
+			id: 188,
+			query: func(db *bun.DB) schema.QueryAppender {
+				type Model struct {
+					Name string
+				}
+				model := &Model{
+					Name: "name1",
+				}
+				return db.NewUpdate().
+					Model(model).
+					Column("name").
+					Set("updated_at = ?", time.Now()).
+					Where("id = ?", 1)
+			},
+		},
+		{
+			id: 189,
+			query: func(db *bun.DB) schema.QueryAppender {
+				type Model struct {
+					Name string
+				}
+				model := &Model{
+					Name: "name1",
+				}
+				return db.NewUpdate().
+					Model(model).
+					Column("name").
+					Value("name", "name2").
+					Set("updated_at = ?", time.Now()).
+					Where("id = ?", 1)
+			},
+		},
+		{
+			id: 190,
+			query: func(db *bun.DB) schema.QueryAppender {
+				type Model struct {
+					Name string
+				}
+				model := &Model{
+					Name: "name1",
+				}
+				return db.NewUpdate().
+					Model(model).
+					ExcludeColumn().
+					Set("updated_at = ?", time.Now()).
+					Where("id = ?", 1)
+			},
+		},
+		{
+			id: 191,
+			query: func(db *bun.DB) schema.QueryAppender {
+				type Model struct {
+					Name string
+				}
+				type Values struct {
+					Foo *string
+					Bar *int64
+				}
+				model := &Model{
+					Name: "name1",
+				}
+				values := &Values{
+					Foo: new(string),
+				}
+				return db.NewInsert().
+					Model(model).
+					On("CONFLICT DO UPDATE").
+					SetValues(db.NewValues(values).OmitZero())
+			},
+		},
+		{
+			id: 192,
+			query: func(db *bun.DB) schema.QueryAppender {
+				type Model struct {
+					Name string
+				}
+				type Values struct {
+					Foo *string
+					Bar *int64
+				}
+				model := &Model{
+					Name: "name1",
+				}
+				values := map[string]any{
+					"foo": "string",
+					"bar": nil,
+				}
+				return db.NewInsert().
+					Model(model).
+					On("CONFLICT DO UPDATE").
+					SetValues(db.NewValues(&values))
+			},
+		},
+		{
+			id: 193,
+			query: func(db *bun.DB) schema.QueryAppender {
+				type Model struct {
+					ID    int64 `bun:",pk,autoincrement"`
+					Name  string
+					Value string
+				}
+				newModels := []*Model{
+					{Name: "A", Value: "world"},
+					{Name: "B", Value: "test"},
+				}
+				return db.NewMerge().
+					Model(new(Model)).
+					With("_data", db.NewValues(&newModels)).
+					Using("_data").
+					On("?TableAlias.name = _data.name").
+					WhenUpdate("MATCHED", func(q *bun.UpdateQuery) *bun.UpdateQuery {
+						return q.Set("value = _data.value")
+					}).
+					WhenInsert("NOT MATCHED", func(q *bun.InsertQuery) *bun.InsertQuery {
+						return q.Value("name", "_data.name").Value("value", "_data.value")
+					}).
+					Returning("merge_action(), ?TableAlias.*")
+			},
+		},
+		{
+			id: 194,
+			query: func(db *bun.DB) schema.QueryAppender {
+				return db.NewSelect().
+					OrderBy("foo", bun.OrderAsc).
+					OrderBy("foo.bar", bun.OrderDesc).
+					OrderBy("xxx", bun.Order("bad"))
+			},
+		},
 	}
 
 	timeRE := regexp.MustCompile(`'2\d{3}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}(\.\d+)?(\+\d{2}:\d{2})?'`)
@@ -1759,7 +1888,7 @@ func TestQuery(t *testing.T) {
 			t.Run(fmt.Sprintf("%d", tt.id), func(t *testing.T) {
 				q := tt.query(db)
 
-				query, err := q.AppendQuery(db.Formatter(), nil)
+				query, err := q.AppendQuery(db.QueryGen(), nil)
 				if err != nil {
 					cupaloy.SnapshotT(t, err.Error())
 				} else {
@@ -1787,7 +1916,7 @@ func TestAlterTable(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		operation interface{}
+		operation any
 	}{
 		{name: "create table", operation: &migrate.CreateTableOp{
 			TableName: tableName,

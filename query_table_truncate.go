@@ -9,6 +9,7 @@ import (
 	"github.com/uptrace/bun/schema"
 )
 
+// TruncateTableQuery builds TRUNCATE TABLE statements.
 type TruncateTableQuery struct {
 	baseQuery
 	cascadeQuery
@@ -19,6 +20,7 @@ type TruncateTableQuery struct {
 
 var _ Query = (*TruncateTableQuery)(nil)
 
+// NewTruncateTableQuery creates a TruncateTableQuery attached to the given DB.
 func NewTruncateTableQuery(db *DB) *TruncateTableQuery {
 	q := &TruncateTableQuery{
 		baseQuery: baseQuery{
@@ -33,7 +35,7 @@ func (q *TruncateTableQuery) Conn(db IConn) *TruncateTableQuery {
 	return q
 }
 
-func (q *TruncateTableQuery) Model(model interface{}) *TruncateTableQuery {
+func (q *TruncateTableQuery) Model(model any) *TruncateTableQuery {
 	q.setModel(model)
 	return q
 }
@@ -52,12 +54,12 @@ func (q *TruncateTableQuery) Table(tables ...string) *TruncateTableQuery {
 	return q
 }
 
-func (q *TruncateTableQuery) TableExpr(query string, args ...interface{}) *TruncateTableQuery {
+func (q *TruncateTableQuery) TableExpr(query string, args ...any) *TruncateTableQuery {
 	q.addTable(schema.SafeQuery(query, args))
 	return q
 }
 
-func (q *TruncateTableQuery) ModelTableExpr(query string, args ...interface{}) *TruncateTableQuery {
+func (q *TruncateTableQuery) ModelTableExpr(query string, args ...any) *TruncateTableQuery {
 	q.modelTableName = schema.SafeQuery(query, args)
 	return q
 }
@@ -94,7 +96,7 @@ func (q *TruncateTableQuery) Operation() string {
 }
 
 func (q *TruncateTableQuery) AppendQuery(
-	fmter schema.Formatter, b []byte,
+	gen schema.QueryGen, b []byte,
 ) (_ []byte, err error) {
 	if q.err != nil {
 		return nil, q.err
@@ -102,10 +104,10 @@ func (q *TruncateTableQuery) AppendQuery(
 
 	b = appendComment(b, q.comment)
 
-	if !fmter.HasFeature(feature.TableTruncate) {
+	if !gen.HasFeature(feature.TableTruncate) {
 		b = append(b, "DELETE FROM "...)
 
-		b, err = q.appendTables(fmter, b)
+		b, err = q.appendTables(gen, b)
 		if err != nil {
 			return nil, err
 		}
@@ -115,7 +117,7 @@ func (q *TruncateTableQuery) AppendQuery(
 
 	b = append(b, "TRUNCATE TABLE "...)
 
-	b, err = q.appendTables(fmter, b)
+	b, err = q.appendTables(gen, b)
 	if err != nil {
 		return nil, err
 	}
@@ -128,18 +130,18 @@ func (q *TruncateTableQuery) AppendQuery(
 		}
 	}
 
-	b = q.appendCascade(fmter, b)
+	b = q.appendCascade(gen, b)
 
 	return b, nil
 }
 
 //------------------------------------------------------------------------------
 
-func (q *TruncateTableQuery) Exec(ctx context.Context, dest ...interface{}) (sql.Result, error) {
+func (q *TruncateTableQuery) Exec(ctx context.Context, dest ...any) (sql.Result, error) {
 	// if a comment is propagated via the context, use it
 	setCommentFromContext(ctx, q)
 
-	queryBytes, err := q.AppendQuery(q.db.fmter, q.db.makeQueryBytes())
+	queryBytes, err := q.AppendQuery(q.db.gen, q.db.makeQueryBytes())
 	if err != nil {
 		return nil, err
 	}
