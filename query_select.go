@@ -151,12 +151,7 @@ func (q *SelectQuery) ExcludeColumn(columns ...string) *SelectQuery {
 	return q
 }
 
-//------------------------------------------------------------------------------
-func (q *SelectQuery) DelWhere(fieldName string) *SelectQuery {
-	q.delWhere(fieldName)
-	return q
-}
-
+// ------------------------------------------------------------------------------
 // WherePK adds a WHERE condition on the model's primary key columns.
 func (q *SelectQuery) WherePK(cols ...string) *SelectQuery {
 	q.addWhereCols(cols)
