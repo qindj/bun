@@ -266,16 +266,19 @@ func NewWithQuery(name string, query Query) *WithQuery {
 	}
 }
 
+// Recursive marks the CTE as recursive, enabling self-referential queries.
 func (q *WithQuery) Recursive() *WithQuery {
 	q.recursive = true
 	return q
 }
 
+// Materialized hints the planner to evaluate the CTE once and store the results.
 func (q *WithQuery) Materialized() *WithQuery {
 	q.materialized = true
 	return q
 }
 
+// NotMaterialized hints the planner to inline the CTE, potentially re-evaluating it.
 func (q *WithQuery) NotMaterialized() *WithQuery {
 	q.notMaterialized = true
 	return q
@@ -1171,6 +1174,7 @@ func (q *setQuery) appendSet(gen schema.QueryGen, b []byte) (_ []byte, err error
 func (q *setQuery) appendSetStruct(
 	gen schema.QueryGen, b []byte, model *structTableModel, fields []*schema.Field,
 ) (_ []byte, err error) {
+	defaultPlaceholder := gen.HasFeature(feature.DefaultPlaceholder)
 	isTemplate := gen.IsNop()
 	pos := len(b)
 	for _, f := range fields {
@@ -1202,6 +1206,8 @@ func (q *setQuery) appendSetStruct(
 			if err != nil {
 				return nil, err
 			}
+		} else if defaultPlaceholder {
+			b = f.AppendValueOrDefault(gen, b, model.strct)
 		} else {
 			b = f.AppendValue(gen, b, model.strct)
 		}
